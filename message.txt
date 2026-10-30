@@ -1,0 +1,347 @@
+
+```js
+
+(async () => {
+  // CONFIGURAÇÕES
+  const MAX_PAGINAS = 400;
+  const CONCORRENCIA = 3;
+  const PRECO_MIN = 170;
+  const PRECO_MAX = 200;
+  const PAUSA_MS = 300;
+
+  // ID da imagem do selo mostrado no seu print
+  const SELO_INTERNACIONAL = "11tVhj88LYL";
+
+  const produtos = new Map();
+  const urlBase = new URL(window.location.href);
+
+  let proximaPagina = 1;
+  let paginasColetadas = 0;
+  let erroColeta = null;
+  let descartadosInternacionais = 0;
+  let descartadosPreco = 0;
+
+  window.pararColetaAmazon = false;
+
+  const esperar = ms =>
+    new Promise(resolve => setTimeout(resolve, ms));
+
+  // FILTRO DE PREÇO NA URL DA AMAZON
+  const filtros = (urlBase.searchParams.get("rh") || "")
+    .split(",")
+    .filter(f => f && !f.startsWith("p_36:"));
+
+  filtros.push(
+    `p_36:${PRECO_MIN * 100}-${PRECO_MAX * 100}`
+  );
+
+  urlBase.searchParams.set("rh", filtros.join(","));
+
+  function converterPreco(texto) {
+    if (!texto) return null;
+
+    const valor = Number(
+      texto
+        .replace(/[^\d,.]/g, "")
+        .replace(/\./g, "")
+        .replace(",", ".")
+    );
+
+    return Number.isFinite(valor) ? valor : null;
+  }
+
+  // NOVO: DETECTAR COMPRA INTERNACIONAL
+  function ehCompraInternacional(card) {
+    const imagens = card.querySelectorAll("img");
+
+    // Detecta o selo que aparece como imagem
+    for (const img of imagens) {
+      const atributos = [
+        img.getAttribute("src"),
+        img.getAttribute("data-src"),
+        img.getAttribute("srcset"),
+        img.getAttribute("data-a-dynamic-image"),
+        img.getAttribute("alt")
+      ].filter(Boolean).join(" ");
+
+      if (atributos.includes(SELO_INTERNACIONAL)) {
+        return true;
+      }
+
+      if (/compra\s+internacional|envio\s+internacional/i
+          .test(atributos)) {
+        return true;
+      }
+    }
+
+    // Detecta o selo quando aparece como texto
+    const texto = (card.textContent || "")
+      .replace(/\s+/g, " ");
+
+    if (/compra\s+internacional|envio\s+internacional/i
+        .test(texto)) {
+      return true;
+    }
+
+    // Verifica atributos de acessibilidade
+    const elementos = card.querySelectorAll(
+      "[aria-label], [title]"
+    );
+
+    for (const el of elementos) {
+      const atributos = [
+        el.getAttribute("aria-label"),
+        el.getAttribute("title")
+      ].filter(Boolean).join(" ");
+
+      if (/compra\s+internacional|envio\s+internacional/i
+          .test(atributos)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function extrairProdutos(doc, pagina) {
+    const cards = doc.querySelectorAll(
+      '[data-component-type="s-search-result"][data-asin]'
+    );
+
+    let novos = 0;
+    let internacionaisPagina = 0;
+
+    cards.forEach((card, index) => {
+      const asin = card.getAttribute("data-asin");
+
+      if (!asin || produtos.has(asin)) return;
+
+      // NOVO: DESCARTAR ENVIO INTERNACIONAL
+      if (ehCompraInternacional(card)) {
+        descartadosInternacionais++;
+        internacionaisPagina++;
+        return;
+      }
+
+      const precoTexto = card.querySelector(
+        ".a-price:not(.a-text-price) .a-offscreen"
+      )?.textContent?.trim() || null;
+
+      const preco = converterPreco(precoTexto);
+
+      // FILTRO DE PREÇO
+      if (
+        preco === null ||
+        preco <= PRECO_MIN ||
+        preco >= PRECO_MAX
+      ) {
+        descartadosPreco++;
+        return;
+      }
+
+      const h2 = card.querySelector("h2");
+
+      const avaliacaoTexto = card.querySelector(
+        ".a-icon-alt"
+      )?.textContent || "";
+
+      const nota = avaliacaoTexto.match(
+        /\d+(?:[,.]\d+)?/
+      );
+
+      const quantidadeTexto = card.querySelector(
+        ".a-size-base.s-underline-text"
+      )?.textContent || "";
+
+      const imagem = card.querySelector(
+        "img.s-image"
+      );
+
+      produtos.set(asin, {
+        asin,
+        nome: h2?.textContent?.trim() || null,
+        preco,
+        precoTexto,
+        avaliacao: nota
+          ? Number(nota[0].replace(",", "."))
+          : null,
+        quantidadeAvaliacoes:
+          Number(quantidadeTexto.replace(/\D/g, "")) || null,
+        imagem: imagem?.getAttribute("src") || null,
+        link: `${urlBase.origin}/dp/${asin}`,
+        pagina,
+        posicao: index + 1
+      });
+
+      novos++;
+    });
+
+    return {
+      encontrados: cards.length,
+      novos,
+      internacionaisPagina
+    };
+  }
+
+  async function coletarPagina(pagina) {
+    const url = new URL(urlBase.href);
+    url.searchParams.set("page", String(pagina));
+
+    const resposta = await fetch(url.href, {
+      credentials: "same-origin"
+    });
+
+    if (!resposta.ok) {
+      throw new Error(
+        `Página ${pagina}: HTTP ${resposta.status}`
+      );
+    }
+
+    const html = await resposta.text();
+
+    const doc = new DOMParser().parseFromString(
+      html,
+      "text/html"
+    );
+
+    if (
+      /robot check|captcha/i.test(doc.title) ||
+      doc.querySelector('form[action*="validateCaptcha"]')
+    ) {
+      throw new Error(
+        `Verificação da Amazon na página ${pagina}`
+      );
+    }
+
+    return extrairProdutos(doc, pagina);
+  }
+
+  // COLETA PARALELA
+  async function trabalhador() {
+    while (!window.pararColetaAmazon) {
+      const pagina = proximaPagina++;
+
+      if (pagina > MAX_PAGINAS) break;
+
+      try {
+        const resultado = await coletarPagina(pagina);
+
+        if (!resultado.encontrados) {
+          window.pararColetaAmazon = true;
+
+          console.warn(
+            `Página ${pagina} sem resultados.`
+          );
+
+          break;
+        }
+
+        paginasColetadas++;
+
+        console.log(
+          `✅ Página ${pagina}/${MAX_PAGINAS} | ` +
+          `Novos: ${resultado.novos} | ` +
+          `🌍 Internacionais ignorados: ` +
+          `${resultado.internacionaisPagina} | ` +
+          `📦 Total salvo: ${produtos.size}`
+        );
+
+        await esperar(PAUSA_MS);
+      } catch (erro) {
+        erroColeta ??= erro.message;
+        window.pararColetaAmazon = true;
+
+        console.error(
+          `Coleta interrompida: ${erro.message}`
+        );
+
+        break;
+      }
+    }
+  }
+
+  function baixarJSON() {
+    const lista = [...produtos.values()].sort(
+      (a, b) =>
+        a.pagina - b.pagina ||
+        a.posicao - b.posicao
+    );
+
+    const dados = {
+      origem: urlBase.href,
+      filtros: {
+        precoMaiorQue: PRECO_MIN,
+        precoMenorQue: PRECO_MAX,
+        excluirCompraInternacional: true
+      },
+      paginasColetadas,
+      totalProdutos: lista.length,
+      descartadosInternacionais,
+      descartadosPreco,
+      erroColeta,
+      produtos: lista
+    };
+
+    const blob = new Blob(
+      [JSON.stringify(dados, null, 2)],
+      {
+        type: "application/json;charset=utf-8"
+      }
+    );
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+
+    a.href = url;
+    a.download =
+      "amazon-produtos-170-200-nacionais.json";
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    setTimeout(
+      () => URL.revokeObjectURL(url),
+      10000
+    );
+  }
+
+  console.log("🚀 INICIANDO COLETA AMAZON");
+  console.log(
+    `📄 Máximo de páginas: ${MAX_PAGINAS}`
+  );
+  console.log(
+    `💰 Preço: R$ ${PRECO_MIN} a R$ ${PRECO_MAX}`
+  );
+  console.log(
+    "🌍 Excluindo Compra Internacional"
+  );
+  console.log(
+    `⚡ Requisições simultâneas: ${CONCORRENCIA}`
+  );
+
+  try {
+    await Promise.all(
+      Array.from(
+        { length: CONCORRENCIA },
+        () => trabalhador()
+      )
+    );
+  } finally {
+    baixarJSON();
+
+    console.log("🏁 COLETA FINALIZADA");
+    console.log(
+      `📦 Produtos salvos: ${produtos.size}`
+    );
+    console.log(
+      `🌍 Internacionais descartados: ` +
+      descartadosInternacionais
+    );
+    console.log(
+      `💰 Fora do preço: ${descartadosPreco}`
+    );
+  }
+})();
+
+```
