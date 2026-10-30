@@ -1,6 +1,6 @@
 # otrec — Next.js/Vercel
 
-Aplicação React com Next.js que busca um produto ao mesmo tempo na **Amazon Brasil e no KaBuM!**, com categoria por marketplace e faixa de preço. A interface recebe resultados progressivamente por streaming e pode ser publicada no plano Hobby da Vercel.
+Aplicação React com Next.js que consulta oito marketplaces. Amazon Brasil, KaBuM!, AliExpress e Americanas têm coleta integrada de produtos; Mercado Livre, Shopee, Magalu e Casas Bahia ficam disponíveis somente por links de busca externa. A interface recebe os produtos coletados progressivamente por streaming e pode ser publicada na Vercel.
 
 ## Marketplaces
 
@@ -8,8 +8,24 @@ Aplicação React com Next.js que busca um produto ao mesmo tempo na **Amazon Br
 |---|---|---|---|
 | Amazon | HTML dos cards | 23 departamentos (`search-alias` do próprio site, parâmetro `i`) | `rh=p_36:` na URL |
 | KaBuM! | JSON `__NEXT_DATA__` | 15 departamentos, filtrados pelo departamento do produto | `facet_filters` (base64) na URL final, depois do redirecionamento da busca |
+| Mercado Livre | Link externo | Todas | Segmento `PriceRange` na URL |
+| Shopee | Link externo | Todas | `PRICE_RANGE` em `fe_filter_options` |
+| AliExpress | JSON estruturado embutido no HTML | Todas | Corte exato feito localmente; a URL solicita frete grátis, origem BR e nota 4+ |
+| Magalu | Link externo | Todas | `filters=price---...` |
+| Casas Bahia | Link externo | Todas | `filter=preco-...` |
+| Americanas | JSON do HTML ou consulta pública GraphQL usada pela busca do site | Todas | Faceta `price` na consulta e corte exato local |
 
-Mercado Livre, AliExpress, Shopee, Magalu, Casas Bahia e Americanas aparecem desativados na interface: Mercado Livre e AliExpress exigem verificação de conta/captcha para acessos vindos de servidor, Shopee e Americanas dependem de JavaScript para listar produtos e Magalu e Casas Bahia bloqueiam acesso automatizado (HTTP 403). O catálogo fica em `lib/marketplaces.js`.
+Mercado Livre, Shopee, Magalu e Casas Bahia podem ser selecionados, mas seus produtos ainda não são agregados na lista interna. Selecioná-los prepara links de busca externa. O AliExpress expõe no HTML um JSON estruturado com preço, nota, vendidos e origem de envio. A Americanas usa uma consulta pública GraphQL; o identificador atual da consulta é lido do JavaScript público da loja, sem executar código remoto e sem fixar um hash que ficaria desatualizado. O catálogo e os geradores de URL ficam em `lib/marketplaces.js`.
+
+Todos os marketplaces da busca concluída aparecem no filtro por loja, mesmo com zero produtos. Ao selecionar uma loja, a interface explica se houve bloqueio, exclusão por faixa de preço, exclusão internacional, origem não confirmada ou se a loja só está disponível por link externo. Isso não implica que exista coleta integrada nos oito sites.
+
+Com **Excluir compra internacional** marcado, o AliExpress exclui também anúncios sem origem confirmada. O parâmetro de envio do Brasil não garante que a loja respeite o filtro: o corte final usa a origem informada em cada produto. Para incluir produtos internacionais, desmarque a opção e execute a busca novamente.
+
+Ao executar uma busca, a página também atualiza sua própria query string (`q`, `min`, `max`, `sites`, `pages`, `international` e categorias), permitindo salvar ou compartilhar a configuração. A chave `APP_TOKEN` e URLs personalizadas nunca são colocadas na URL.
+
+Os links de busca aparecem assim que o termo e a faixa de preço são válidos. Os cartões das lojas também têm o link **Abrir busca**. Em opções avançadas, é possível colar até oito URLs de busca de qualquer marketplace listado; filtros das URLs personalizadas são preservados. Uma URL inválida gera um aviso e é ignorada, sem cancelar a coleta das outras fontes. Sites sem coletor ficam disponíveis por link externo, sem envio dessas URLs ao servidor para download.
+
+As URLs extras sempre funcionam como modelos de filtros: o termo antigo é substituído pelo nome atual. Por exemplo, trocar “fone de ouvido” por “poco x7 pro” atualiza as oito lojas e as URLs extras, mantendo preço, frete e avaliação compatíveis. Na Americanas, categorias fixas de fones são removidas para permitir a busca de outro tipo de produto. Sem um nome digitado, o app usa o termo original da URL.
 
 ## Executar localmente
 
@@ -27,7 +43,17 @@ O header inclui a música **funk do Otrec**, em `public/audio/o-rs-certo.mp3`, c
 ```bash
 npm test
 npm run build
+npm run test:e2e
 ```
+
+Os testes de navegador usam o Chrome instalado e simulam as respostas das lojas para reproduzir bloqueios e erros de forma determinística. Para outro navegador instalado, defina `PLAYWRIGHT_CHANNEL` (por exemplo, `msedge`). Para testar a coleta real no PowerShell, depois do build:
+
+```powershell
+$env:RUN_LIVE_SEARCH = '1'
+node ./node_modules/@playwright/test/cli.js test --grep 'coleta real'
+```
+
+O teste real não exige uma quantidade fixa de produtos: lojas podem bloquear a coleta ou não ter ofertas no intervalo. A verificação cobre HTTP 200 da API, conclusão da busca, estados individuais das fontes e disponibilidade dos links externos.
 
 ## Publicar diretamente na Vercel
 
@@ -48,13 +74,13 @@ Crie no projeto da Vercel uma variável de ambiente chamada `APP_TOKEN`, com uma
 
 ## Limites da versão serverless
 
-- Até 2 marketplaces + 3 URLs próprias da Amazon ou do KaBuM!, 100 páginas por busca e 3 buscas simultâneas.
+- Até 4 marketplaces com coleta integrada, 4 marketplaces somente por links externos e 8 URLs próprias dos marketplaces listados; até 100 páginas por busca e 3 buscas simultâneas.
 - `vercel.json` fixa a função na região `gru1` (São Paulo) para que os marketplaces vejam um acesso brasileiro.
 - A função encerra a coleta com resultados parciais antes do limite de execução da Vercel.
 - Resultados existem somente no navegador e devem ser exportados antes de fechar a página.
 - Atualizar a página ou interromper a conexão cancela o acompanhamento da coleta.
 - CAPTCHA, login, bloqueios por IP, renderização por JavaScript e alterações no HTML dos marketplaces podem impedir a coleta.
-- A hospedagem na Vercel não garante que Amazon ou KaBuM! aceitarão requisições originadas do datacenter.
+- A hospedagem na Vercel não garante que Amazon, KaBuM!, AliExpress ou Americanas aceitarão requisições originadas do datacenter. A consulta pública da Americanas é uma integração não oficial e alterações no site podem interrompê-la.
 
 ## Critérios
 

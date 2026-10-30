@@ -233,6 +233,8 @@ main { max-width: 1320px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 48px) 40px
 .field small { font-weight: 400; color: var(--muted); }
 .field input, .field textarea, .toolbar select { width: 100%; border: 2px solid var(--line); border-radius: 10px; background: var(--surface-2); padding: 10px 12px; font-size: 14px; }
 .field textarea { resize: vertical; font: 13px/1.6 var(--font-mono), monospace; }
+.field .follow-term { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+.field .follow-term input { width: auto; flex: none; accent-color: var(--accent); }
 
 /* lançamento */
 .launch { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 16px 16px 16px 22px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--ink); color: var(--bg); box-shadow: 6px 6px 0 var(--accent); }
@@ -250,9 +252,22 @@ main { max-width: 1320px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 48px) 40px
 .btn-small { padding: 9px 14px; font-size: 13px; background: var(--surface); box-shadow: 3px 3px 0 var(--shadow); }
 .btn-small:not(:disabled):active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--shadow); }
 .feedback { margin: 0; padding: 12px 16px; border: 2px solid var(--line); border-radius: 10px; background: var(--pink); color: #121212; font-weight: 600; }
+.feedback p { margin: 4px 0; }
+.feedback small { display: block; font-weight: 400; overflow-wrap: anywhere; }
 
 /* ——— resultados ——— */
 .results { margin-top: 56px; scroll-margin-top: 90px; }
+.external-searches { margin-bottom: 38px; padding: 20px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: 6px 6px 0 var(--accent); }
+.external-searches-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 16px; }
+.external-searches-head h2 { margin: 5px 0 0; font-family: var(--font-display); font-size: clamp(24px, 3vw, 34px); letter-spacing: -.03em; }
+.external-searches-head p { max-width: 520px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.external-search-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+.external-search { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 11px 12px; border: 2px solid var(--line); border-radius: 11px; background: color-mix(in srgb, var(--brand) 12%, var(--surface)); color: var(--ink); text-decoration: none; transition: transform .12s, box-shadow .12s; }
+.external-search:hover { transform: translate(-2px, -2px); box-shadow: 4px 4px 0 var(--brand); }
+.external-search > span:nth-child(2) { display: grid; min-width: 0; flex: 1; }
+.external-search strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.external-search small { color: var(--muted); font-size: 11px; }
+.external-search b { font-size: 18px; }
 .results-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
 .eyebrow { font: 700 12px var(--font-mono), monospace; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
 .results-head h2 { font-family: var(--font-display); font-size: clamp(28px, 4vw, 46px); letter-spacing: -.035em; line-height: 1; margin: 8px 0 0; overflow-wrap: anywhere; }
@@ -271,6 +286,9 @@ main { max-width: 1320px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 48px) 40px
 .source-erro { border-color: var(--danger); }
 .source-erro .source-state { background: var(--danger); color: #fff; border-color: var(--danger); }
 .source-error { grid-column: 1 / -1; font-size: 12px; color: var(--danger); line-height: 1.4; }
+.source-detail { grid-column: 1 / -1; max-width: 420px; color: var(--muted); line-height: 1.5; font-size: 12px; }
+.market-explanation { margin: 12px 0; padding: 12px 14px; border: 2px solid var(--line); border-radius: 10px; background: var(--surface); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.market-explanation a { display: block; margin-top: 5px; font-weight: 700; color: var(--accent); }
 
 .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border: 2px solid var(--line); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
 .metrics div { padding: 16px 18px; border-right: 2px solid var(--soft-line); }

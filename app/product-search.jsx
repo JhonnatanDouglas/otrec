@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MARKETPLACES, MARKETPLACE_BY_ID } from '../lib/marketplaces';
+import { buildSearchPlan, MAX_CUSTOM_URLS } from '../lib/search-plan';
+import { summarizeMarkets } from '../lib/search-results';
 import MarketplacePicker, { Monogram } from './components/marketplace-picker';
 import PriceHistogram from './components/price-histogram';
 import PriceRange, { money, rangeLabel } from './components/price-range';
@@ -10,12 +12,12 @@ import ProductCard, { discountOf } from './components/product-card';
 
 const STORAGE_KEY = 'otrec:form:v3';
 const emptySnapshot = { status: 'aguardando', paginasColetadas: 0, descartadosInternacionais: 0, descartadosPreco: 0, descartadosCategoria: 0, duplicados: 0, erros: [], eventos: [], produtos: [], fontes: [], duracao: 0 };
-const statusText = { aguardando: 'Pronto para garimpar', executando: 'Garimpando…', concluido: 'Coleta concluída', concluido_com_avisos: 'Concluída com avisos', cancelado: 'Coleta interrompida' };
+const statusText = { aguardando: 'Pronto para garimpar', executando: 'Garimpando…', concluido: 'Coleta concluída', concluido_com_avisos: 'Concluída com avisos', buscas_prontas: 'Buscas externas prontas', falha: 'Não foi possível coletar', cancelado: 'Coleta interrompida' };
 const sourceStatus = { 'na fila': 'na fila', coletando: 'lendo', concluido: 'ok', erro: 'erro' };
 const SUGGESTIONS = ['fone bluetooth', 'ssd 1tb', 'air fryer', 'teclado mecânico', 'smartwatch', 'cadeira gamer'];
 const defaultForm = {
   term: '',
-  markets: { amazon: { on: true, category: '' }, kabum: { on: true, category: '' } },
+  markets: Object.fromEntries(MARKETPLACES.map(marketplace => [marketplace.id, { on: marketplace.collect, category: '' }])),
   min: 170, max: 200, excludeInternational: true, urls: '', pages: 10, concurrency: 2, token: '',
 };
 
@@ -49,24 +51,75 @@ export default function ProductSearch() {
   const [sort, setSort] = useState('original');
   const [onlyMarket, setOnlyMarket] = useState('');
   const [refine, setRefine] = useState(null);
+  const [ready, setReady] = useState(false);
   const controller = useRef(null);
   const resultsRef = useRef(null);
   const active = snapshot.status === 'executando';
 
   useEffect(() => {
+    let restored = defaultForm;
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-      if (saved) setForm(current => ({ ...current, ...saved, markets: { ...current.markets, ...saved.markets }, token: '' }));
+      if (saved) restored = { ...restored, ...saved, markets: { ...restored.markets, ...saved.markets }, token: '' };
     } catch { /* ignora preferências corrompidas */ }
+    const params = new URLSearchParams(window.location.search);
+    const term = params.get('q');
+    const sites = params.get('sites');
+    const number = (name, minimum, maximum) => {
+      const raw = params.get(name);
+      const value = Number(raw);
+      return raw !== null && Number.isFinite(value) && value >= minimum && value <= maximum ? raw : null;
+    };
+    if (term !== null) restored = { ...restored, term: term.slice(0, 120) };
+    const min = number('min', 0, 10_000_000);
+    const max = number('max', 0, 10_000_000);
+    const pages = number('pages', 1, 100);
+    if (min !== null) restored = { ...restored, min };
+    if (max !== null) restored = { ...restored, max };
+    if (pages !== null) restored = { ...restored, pages };
+    if (params.has('international')) restored = { ...restored, excludeInternational: params.get('international') !== '1' };
+    if (sites !== null) {
+      const enabled = new Set(sites.split(',').filter(id => MARKETPLACE_BY_ID.has(id)));
+      const markets = Object.fromEntries(MARKETPLACES.map(marketplace => {
+        const requestedCategory = params.get(`cat_${marketplace.id}`) || '';
+        const category = marketplace.categories.some(item => item.id === requestedCategory) ? requestedCategory : '';
+        return [marketplace.id, { on: enabled.has(marketplace.id), category }];
+      }));
+      restored = { ...restored, markets };
+    }
+    restored.urls = typeof restored.urls === 'string' ? restored.urls : '';
+    restored.term = typeof restored.term === 'string' ? restored.term : '';
+    restored.markets = Object.fromEntries(MARKETPLACES.map(marketplace => {
+      const state = restored.markets?.[marketplace.id];
+      return [marketplace.id, { on: !!state?.on, category: marketplace.categories.some(item => item.id === state?.category) ? state.category : '' }];
+    }));
+    setForm(restored);
+    setReady(true);
   }, []);
   useEffect(() => {
+    if (!ready) return;
     const { token, ...rest } = form;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(rest)); } catch { /* armazenamento indisponível */ }
-  }, [form]);
+  }, [form, ready]);
+  useEffect(() => () => controller.current?.abort(), []);
 
   const set = patch => setForm(current => ({ ...current, ...patch }));
   const selected = MARKETPLACES.filter(marketplace => form.markets[marketplace.id]?.on);
   const customUrls = form.urls.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+  const searchInput = {
+    term: form.term.trim(),
+    searches: selected.map(marketplace => ({ marketplace: marketplace.id, category: form.markets[marketplace.id]?.category || null })),
+    urls: customUrls,
+    min: Number(form.min), max: Number(form.max), pages: Number(form.pages), concurrency: Number(form.concurrency),
+    excludeInternational: form.excludeInternational,
+  };
+  const searchPlan = useMemo(() => {
+    try { return { ...buildSearchPlan(searchInput), error: '' }; }
+    catch (error) { return { jobs: [], links: [], warnings: [], error: error.message }; }
+  }, [form]);
+  const searchLinks = searchPlan.links.map(link => ({ ...link, marketplace: MARKETPLACE_BY_ID.get(link.marketplaceId) }));
+  const resultMarkets = useMemo(() => summarizeMarkets(snapshot), [snapshot]);
+  const focusedMarket = resultMarkets.find(item => item.marketplace.id === onlyMarket);
 
   const products = useMemo(() => {
     const needle = search.toLocaleLowerCase('pt-BR');
@@ -87,41 +140,57 @@ export default function ProductSearch() {
     const prices = list.map(product => product.preco);
     const cheapest = list.reduce((best, product) => (product.preco < best.preco ? product : best));
     const bestDeal = list.reduce((best, product) => (discountOf(product) > discountOf(best) ? product : best));
-    const counts = new Map();
-    for (const product of list) counts.set(product.marketplaceId, (counts.get(product.marketplaceId) || 0) + 1);
-    return { prices, cheapest, bestDeal, median: median(prices), counts };
+    return { prices, cheapest, bestDeal, median: median(prices) };
   }, [snapshot.produtos]);
 
   async function submit(event) {
     event.preventDefault();
+    if (controller.current) return;
     setFeedback('');
-    if (!selected.length && !customUrls.length) return setFeedback('Escolha pelo menos um marketplace (ou cole uma URL nas opções avançadas).');
-    if (selected.length && !form.term.trim()) return setFeedback('Diga o que você procura — ex.: “fone bluetooth”.');
-    if (customUrls.length > 3) return setFeedback('Use no máximo 3 URLs personalizadas.');
-    if (Number(form.min) >= Number(form.max)) return setFeedback('O máximo deve ser maior que o mínimo.');
-    const abortController = new AbortController();
-    controller.current = abortController;
-    setSnapshot({ ...emptySnapshot, status: 'executando' });
+    if (searchPlan.error) return setFeedback(searchPlan.error);
+    const share = new URLSearchParams();
+    share.set('q', form.term.trim());
+    share.set('min', String(form.min));
+    share.set('max', String(form.max));
+    share.set('sites', selected.map(marketplace => marketplace.id).join(','));
+    share.set('pages', String(form.pages));
+    share.set('international', form.excludeInternational ? '0' : '1');
+    for (const marketplace of selected) {
+      const category = form.markets[marketplace.id]?.category;
+      if (category) share.set(`cat_${marketplace.id}`, category);
+    }
+    window.history.replaceState(null, '', `${window.location.pathname}?${share}`);
+    setSnapshot({ ...emptySnapshot, links: searchPlan.links });
     setRefine(null);
     setOnlyMarket('');
     resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (!searchPlan.jobs.length) {
+      setSnapshot({ ...emptySnapshot, status: 'buscas_prontas', links: searchPlan.links });
+      setFeedback('Buscas externas prontas. Abra os marketplaces abaixo para ver os resultados.');
+      return;
+    }
+    const abortController = new AbortController();
+    controller.current = abortController;
+    setSnapshot({ ...emptySnapshot, status: 'executando', links: searchPlan.links });
     try {
       const response = await fetch('/api/collect', {
         method: 'POST',
         signal: abortController.signal,
         headers: { 'Content-Type': 'application/json', ...(form.token ? { 'X-App-Token': form.token } : {}) },
-        body: JSON.stringify({
-          term: form.term.trim(),
-          searches: selected.map(marketplace => ({ marketplace: marketplace.id, category: form.markets[marketplace.id].category || null })),
-          urls: customUrls,
-          min: Number(form.min), max: Number(form.max), pages: Number(form.pages), concurrency: Number(form.concurrency),
-          excludeInternational: form.excludeInternational,
-        }),
+        body: JSON.stringify(searchInput),
       });
       if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.erro || 'Falha na requisição.'); }
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let finished = false;
+      const receive = message => {
+        if (message.type === 'snapshot') {
+          finished = message.data.status !== 'executando';
+          setSnapshot({ ...emptySnapshot, ...message.data });
+        }
+        if (message.type === 'error') throw new Error(message.data.mensagem);
+      };
       while (true) {
         const { done, value } = await reader.read();
         buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
@@ -129,15 +198,17 @@ export default function ProductSearch() {
         buffer = lines.pop() || '';
         for (const line of lines) {
           if (!line) continue;
-          const message = JSON.parse(line);
-          if (message.type === 'snapshot') setSnapshot({ ...emptySnapshot, ...message.data });
-          if (message.type === 'error') throw new Error(message.data.mensagem);
+          receive(JSON.parse(line));
         }
-        if (done) break;
+        if (done) {
+          if (buffer.trim()) receive(JSON.parse(buffer));
+          break;
+        }
       }
+      if (!finished) throw new Error('A conexão terminou antes da conclusão da coleta. Tente novamente.');
     } catch (error) {
       if (error.name === 'AbortError') setSnapshot(current => ({ ...current, status: 'cancelado' }));
-      else { setFeedback(error.message); setSnapshot(current => ({ ...current, status: current.produtos.length ? 'concluido_com_avisos' : 'aguardando' })); }
+      else { setFeedback(`${error.message} As buscas diretas continuam disponíveis nos links abaixo.`); setSnapshot(current => ({ ...current, status: current.produtos.length ? 'concluido_com_avisos' : 'falha' })); }
     } finally { controller.current = null; }
   }
   function cancel() { controller.current?.abort(); setFeedback('Interrompendo a coleta…'); }
@@ -162,7 +233,7 @@ export default function ProductSearch() {
       <section className="hero">
         <span className="sticker sticker-lime">✦ {MARKETPLACES.length} marketplaces, 1 busca</span>
         <h1>Garimpe o preço certo <span className="hl">na internet inteira.</span></h1>
-        <p>Digite o produto, escolha onde procurar e a faixa de preço. A gente lê as páginas, tira o que é internacional e o que foge do orçamento, e entrega só os achados.</p>
+        <p>Compare os produtos coletados da Amazon, KaBuM!, AliExpress e Americanas. Nas demais lojas, consulte os links de busca. Ajuste a faixa de preço e a origem para encontrar seus achados.</p>
         <div className="sticker sticker-burst" aria-hidden="true">R$<br />certo</div>
       </section>
 
@@ -191,15 +262,18 @@ export default function ProductSearch() {
 
         <div className="step step-markets">
           <div className="step-head"><span className="step-num">03</span><h2>Onde procurar?</h2><span className="step-aside">{selected.length} selecionado{selected.length === 1 ? '' : 's'}</span></div>
-          <MarketplacePicker value={form.markets} onChange={update => setForm(current => ({ ...current, markets: update(current.markets) }))} />
+          <MarketplacePicker value={form.markets} links={searchLinks} onChange={update => setForm(current => ({ ...current, markets: update(current.markets) }))} />
         </div>
 
         <details className="step step-advanced">
           <summary><span className="step-num">+</span> Opções avançadas <small>URLs próprias, páginas, chave de acesso</small></summary>
           <div className="advanced-grid">
             <div className="field field-wide">
-              <label htmlFor="urls">URLs de busca extras <small>(até 3, uma por linha)</small></label>
+              <label htmlFor="urls">URLs de busca extras <small>(até {MAX_CUSTOM_URLS}, uma por linha, dos oito sites)</small></label>
               <textarea id="urls" rows="3" value={form.urls} onChange={event => set({ urls: event.target.value })} placeholder={'https://www.amazon.com.br/s?k=fone&rh=…\nhttps://www.kabum.com.br/hardware/ssd'} />
+              <small>Links dos outros marketplaces abrem no próprio site. Uma URL inválida não cancela as outras buscas.</small>
+              <small>As URLs extras funcionam como modelos de filtros: o produto nelas é sempre substituído pelo nome digitado acima. Sem um nome digitado, o termo original da URL é mantido.</small>
+              {!!form.urls && <button className="link-button" type="button" onClick={() => set({ urls: '' })}>Limpar URLs extras</button>}
             </div>
             <div className="field"><label htmlFor="pages">Páginas por busca</label><input id="pages" type="number" min="1" max="100" value={form.pages} onChange={event => set({ pages: event.target.value })} /></div>
             <div className="field"><label htmlFor="concurrency">Buscas simultâneas</label><input id="concurrency" type="number" min="1" max="3" value={form.concurrency} onChange={event => set({ concurrency: event.target.value })} /></div>
@@ -214,12 +288,30 @@ export default function ProductSearch() {
           </div>
           {active
             ? <button className="btn btn-ghost" type="button" onClick={cancel}>Interromper</button>
-            : <button className="btn btn-primary" type="submit">Garimpar agora <span aria-hidden="true">→</span></button>}
+            : <button className="btn btn-primary" type="submit" disabled={!ready}>Garimpar agora <span aria-hidden="true">→</span></button>}
         </div>
         {feedback && <p className="feedback" role="status" aria-live="polite">{feedback}</p>}
+        {!!searchPlan.warnings.length && <div className="feedback" role="status">{searchPlan.warnings.map((warning, index) => <p key={index}>{warning.mensagem} <small>{warning.url}</small></p>)}</div>}
       </form>
 
       <section className="results" ref={resultsRef}>
+        {!!searchLinks.length && (
+          <div className="external-searches" aria-label="Buscas nos marketplaces">
+            <div className="external-searches-head">
+              <div><span className="eyebrow">buscas prontas</span><h2>Abra direto no marketplace</h2></div>
+              <p>Use estes links quando a coleta no app não estiver disponível ou o site bloquear o servidor.</p>
+            </div>
+            <div className="external-search-grid">
+              {searchLinks.map(({ marketplace, url, custom }) => (
+                <a key={url} className="external-search" href={url} target="_blank" rel="noopener noreferrer" style={{ '--brand': marketplace.color }}>
+                  <Monogram marketplace={marketplace} size="sm" />
+                  <span><strong>{marketplace.name}</strong><small>{custom ? 'URL personalizada' : marketplace.collect ? 'alternativa à coleta' : 'busca externa'}</small></span>
+                  <b aria-hidden="true">↗</b>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="results-head">
           <div><span className="eyebrow">seus achados</span><h2>{snapshot.produtos.length} produto{snapshot.produtos.length === 1 ? '' : 's'}{snapshot.filtros?.termo ? <> para <span className="hl">“{snapshot.filtros.termo}”</span></> : null}</h2></div>
           <span className={`status status-${snapshot.status}`}><i className={`dot${active ? ' live' : ''}`} />{statusText[snapshot.status]}{snapshot.duracao ? ` · ${snapshot.duracao}s` : ''}</span>
@@ -235,6 +327,7 @@ export default function ProductSearch() {
                   <span className="source-name">{source.marketplace}{source.categoria ? <small> · {source.categoria}</small> : source.personalizada ? <small> · URL própria</small> : null}</span>
                   <span className="source-stats mono">{source.paginas}p · {source.aceitos}✓</span>
                   <span className="source-state">{sourceStatus[source.status]}</span>
+                  {source.aceitos === 0 && source.status === 'concluido' && <span className="source-detail">{summarizeMarkets({ fontes: [source], produtos: [] })[0]?.message}</span>}
                   {source.erro && <span className="source-error">{source.erro}</span>}
                 </div>
               );
@@ -245,7 +338,7 @@ export default function ProductSearch() {
         <div className="metrics">
           <div><strong>{snapshot.paginasColetadas}</strong><span>páginas lidas</span></div>
           <div><strong>{snapshot.descartadosPreco}</strong><span>fora da faixa / sem preço</span></div>
-          <div><strong>{snapshot.descartadosInternacionais}</strong><span>internacionais fora</span></div>
+          <div><strong>{snapshot.descartadosInternacionais}</strong><span>internacionais / origem não confirmada</span></div>
           <div><strong>{snapshot.duplicados}</strong><span>repetidos ignorados</span></div>
           {snapshot.descartadosCategoria > 0 && <div><strong>{snapshot.descartadosCategoria}</strong><span>fora da categoria</span></div>}
         </div>
@@ -274,15 +367,20 @@ export default function ProductSearch() {
           <button type="button" className="btn btn-small" disabled={!snapshot.produtos.length} onClick={exportJson}>JSON ↓</button>
         </div>
 
-        {insights && insights.counts.size > 1 && (
+        {!!resultMarkets.length && (
           <div className="market-filter" role="group" aria-label="Filtrar por marketplace">
             <button type="button" className={`chip${!onlyMarket ? ' is-on' : ''}`} aria-pressed={!onlyMarket} onClick={() => setOnlyMarket('')}>Todos <em>{snapshot.produtos.length}</em></button>
-            {[...insights.counts].map(([id, count]) => {
-              const marketplace = MARKETPLACE_BY_ID.get(id);
-              return <button key={id} type="button" className={`chip${onlyMarket === id ? ' is-on' : ''}`} aria-pressed={onlyMarket === id} onClick={() => setOnlyMarket(onlyMarket === id ? '' : id)}><Monogram marketplace={marketplace} size="xs" />{marketplace.name} <em>{count}</em></button>;
+            {resultMarkets.map(({ marketplace, count, message }) => {
+              const id = marketplace.id;
+              return <button key={id} type="button" className={`chip${onlyMarket === id ? ' is-on' : ''}`} aria-pressed={onlyMarket === id} title={message} onClick={() => setOnlyMarket(onlyMarket === id ? '' : id)}><Monogram marketplace={marketplace} size="xs" />{marketplace.name} <em>{count}{!marketplace.collect ? ' · externo' : ''}</em></button>;
             })}
           </div>
         )}
+
+        {focusedMarket && <div className="market-explanation" role="status">
+          <strong>{focusedMarket.marketplace.name}: </strong>{focusedMarket.message}
+          {focusedMarket.url && <a href={focusedMarket.url} target="_blank" rel="noopener noreferrer">Abrir busca na {focusedMarket.marketplace.name} ↗</a>}
+        </div>}
 
         {products.length ? (
           <div className="grid">{products.map(product => <ProductCard key={`${product.marketplaceId}:${product.id}`} product={product} cheapest={product === insights?.cheapest} />)}</div>
@@ -291,8 +389,8 @@ export default function ProductSearch() {
         ) : (
           <div className="empty">
             <div className="empty-art" aria-hidden="true"><span>⌕</span></div>
-            <h3>{snapshot.produtos.length ? 'Nada com esses filtros' : snapshot.status === 'aguardando' ? 'Sua próxima descoberta começa aqui' : 'Nenhum produto passou nos critérios'}</h3>
-            <p>{snapshot.produtos.length ? 'Afrouxe o filtro de nome, marketplace ou preço acima.' : snapshot.status === 'aguardando' ? 'Monte a busca acima e aperte “Garimpar agora”. Os produtos aparecem aqui enquanto as páginas são lidas.' : 'Tente uma faixa de preço mais larga, outro termo ou mais páginas.'}</p>
+            <h3>{focusedMarket?.count === 0 ? `Nenhum produto de ${focusedMarket.marketplace.name} nesta lista` : snapshot.produtos.length ? 'Nada com esses filtros' : snapshot.status === 'buscas_prontas' ? 'Suas buscas estão prontas nos links acima' : snapshot.status === 'aguardando' ? 'Sua próxima descoberta começa aqui' : snapshot.erros.length || snapshot.status === 'falha' ? 'Use a busca direta nos marketplaces' : 'Nenhum produto passou nos critérios'}</h3>
+            <p>{focusedMarket?.count === 0 ? focusedMarket.message : snapshot.produtos.length ? 'Afrouxe o filtro de nome, marketplace ou preço acima.' : snapshot.status === 'buscas_prontas' ? 'Clique na loja desejada para ver os produtos. Essas lojas exibem os resultados no próprio site.' : snapshot.status === 'aguardando' ? 'Monte a busca acima e aperte “Garimpar agora”. Os produtos aparecem aqui enquanto as páginas são lidas.' : snapshot.erros.length || snapshot.status === 'falha' ? 'A coleta encontrou um problema. Os links de busca acima continuam disponíveis; veja o motivo em cada fonte.' : 'Tente uma faixa de preço mais larga, outro termo ou mais páginas. O filtro internacional pode descartar produtos sem origem confirmada.'}</p>
           </div>
         )}
 
@@ -306,7 +404,7 @@ export default function ProductSearch() {
 
       <footer>
         <span><b>otrec</b></span>
-        <span>A ausência de selo internacional não garante origem nacional. CAPTCHA, bloqueios e páginas que dependem de JavaScript podem impedir a coleta.</span>
+        <span>A ausência de selo internacional não garante origem nacional. Quando a coleta não é possível, o app gera uma busca pronta para abrir no marketplace.</span>
       </footer>
     </main>
   </>;

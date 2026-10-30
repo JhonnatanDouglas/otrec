@@ -1,12 +1,12 @@
 'use client';
 
-import { MARKETPLACES, UNAVAILABLE } from '../../lib/marketplaces';
+import { MARKETPLACES } from '../../lib/marketplaces';
 
 export function Monogram({ marketplace, size = 'md' }) {
   return <span className={`monogram monogram-${size}`} style={{ '--brand': marketplace.color, '--brand-ink': marketplace.ink || '#fff' }} aria-hidden="true">{marketplace.monogram}</span>;
 }
 
-export default function MarketplacePicker({ value, onChange }) {
+export default function MarketplacePicker({ value, links = [], onChange }) {
   // onChange recebe uma função de atualização para que cliques rápidos não usem estado antigo.
   const toggle = id => onChange(markets => ({ ...markets, [id]: { ...markets[id], on: !markets[id]?.on } }));
   const setCategory = (id, category) => onChange(markets => ({ ...markets, [id]: { ...markets[id], on: true, category } }));
@@ -15,6 +15,7 @@ export default function MarketplacePicker({ value, onChange }) {
     <div className="markets">
       {MARKETPLACES.map(marketplace => {
         const state = value[marketplace.id] || {};
+        const directLink = links.find(link => link.marketplaceId === marketplace.id && !link.custom);
         return (
           <div key={marketplace.id} className={`market-card${state.on ? ' is-on' : ''}`} style={{ '--brand': marketplace.color }}>
             <button type="button" className="market-toggle" aria-pressed={!!state.on} onClick={() => toggle(marketplace.id)}>
@@ -32,21 +33,14 @@ export default function MarketplacePicker({ value, onChange }) {
                   {marketplace.categories.map(category => <option key={category.id} value={category.id}>{category.label}</option>)}
                 </select>
               ) : <span className="market-note">Busca em todas as categorias</span>}
-              <span className={`tag ${marketplace.priceFilter === 'local' ? 'tag-soft' : 'tag-lime'}`} title={marketplace.priceFilter === 'local' ? 'O marketplace não aceita faixa de preço na busca; o filtro é feito aqui.' : 'A faixa de preço vai na própria busca do marketplace.'}>
-                {marketplace.priceFilter === 'local' ? 'filtro local' : 'R$ na busca'}
-              </span>
+              {directLink ? <a className="tag tag-lime" href={directLink.url} target="_blank" rel="noopener noreferrer" aria-label={`Abrir busca na ${marketplace.name}`}>Abrir busca ↗</a>
+                : <span className={`tag ${marketplace.priceFilter === 'local' ? 'tag-soft' : 'tag-lime'}`}>
+                  {marketplace.collect ? 'coleta no app' : 'selecione para buscar'}
+                </span>}
             </div>
           </div>
         );
       })}
-      <div className="markets-locked">
-        <span>Bloqueiam coleta por servidor:</span>
-        {UNAVAILABLE.map(marketplace => (
-          <span key={marketplace.name} className="locked-chip" title={marketplace.reason}>
-            <Monogram marketplace={marketplace} size="xs" />{marketplace.name}<small>{marketplace.reason}</small>
-          </span>
-        ))}
-      </div>
     </div>
   );
 }
