@@ -7,38 +7,74 @@ const bars = [10, 19, 27, 15, 32, 22, 13, 28, 18, 24, 11];
 export default function HeaderMusic() {
   const audioRef = useRef(null);
   const playerRef = useRef(null);
-  const autoStart = useRef(true);
+  const soundUnlockPending = useRef(false);
+  const userPaused = useRef(false);
   const [playing, setPlaying] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [volume, setVolume] = useState(10);
   const [volumeOpen, setVolumeOpen] = useState(false);
 
   useEffect(() => {
     const audio = audioRef.current;
-    autoStart.current = true;
     audio.volume = 0.1;
-    const attempt = () => { void audio.play().catch(() => {}); };
-    const onInteraction = event => {
-      if (!autoStart.current || playerRef.current?.contains(event.target)) return;
-      if (event.type === 'keydown' && (event.repeat || event.ctrlKey || event.metaKey || event.altKey)) return;
-      attempt();
+    audio.loop = true;
+
+    const startAutomatically = async () => {
+      audio.muted = false;
+      try {
+        await audio.play();
+        setAutoplayBlocked(false);
+        setFailed(false);
+      } catch (error) {
+        if (error?.name === 'NotAllowedError') {
+          soundUnlockPending.current = true;
+          setAutoplayBlocked(true);
+          setFailed(false);
+        } else {
+          setFailed(true);
+        }
+      }
     };
-    attempt();
-    document.addEventListener('click', onInteraction);
-    document.addEventListener('keydown', onInteraction);
+
+    const unlockSound = event => {
+      if (!soundUnlockPending.current || userPaused.current || playerRef.current?.contains(event.target)) return;
+      if (event.type === 'keydown' && (event.repeat || event.ctrlKey || event.metaKey || event.altKey)) return;
+      soundUnlockPending.current = false;
+      void audio.play().then(() => {
+        setAutoplayBlocked(false);
+        setFailed(false);
+      }).catch(() => {
+        soundUnlockPending.current = true;
+        setAutoplayBlocked(true);
+      });
+    };
+
+    void startAutomatically();
+    document.addEventListener('pointerdown', unlockSound, true);
+    document.addEventListener('keydown', unlockSound, true);
     return () => {
-      document.removeEventListener('click', onInteraction);
-      document.removeEventListener('keydown', onInteraction);
+      document.removeEventListener('pointerdown', unlockSound, true);
+      document.removeEventListener('keydown', unlockSound, true);
       audio.pause();
     };
   }, []);
 
   async function toggle() {
     const audio = audioRef.current;
-    autoStart.current = false;
-    if (!audio.paused) { audio.pause(); return; }
+    if (!audio.paused) {
+      userPaused.current = true;
+      audio.pause();
+      return;
+    }
+    userPaused.current = false;
+    soundUnlockPending.current = false;
+    setAutoplayBlocked(false);
     setFailed(false);
-    try { await audio.play(); } catch { setFailed(true); }
+    try { await audio.play(); } catch {
+      soundUnlockPending.current = true;
+      setAutoplayBlocked(true);
+    }
   }
 
   function changeVolume(event) {
@@ -47,20 +83,22 @@ export default function HeaderMusic() {
     audioRef.current.volume = nextVolume / 100;
   }
 
+  const audiblePlaying = playing;
+
   return (
-    <div ref={playerRef} className={`header-music${playing ? ' is-playing' : ''}`}>
+    <div ref={playerRef} className={`header-music${audiblePlaying ? ' is-playing' : ''}`}>
       <audio ref={audioRef} src="/audio/o-rs-certo.mp3" autoPlay loop preload="auto"
-        onPlaying={() => { autoStart.current = false; setPlaying(true); setFailed(false); }}
+        onPlaying={() => { setPlaying(true); setFailed(false); }}
         onPause={() => setPlaying(false)} onWaiting={() => setPlaying(false)}
-        onError={() => { autoStart.current = false; setPlaying(false); setFailed(true); }} />
+        onError={() => { setPlaying(false); setFailed(true); }} />
       <div className="music-wave" aria-hidden="true">
         {bars.map((height, index) => <span key={index} style={{ '--bar-height': `${height}px`, '--bar-delay': `${index * -0.13}s`, '--bar-duration': `${0.6 + (index % 4) * 0.17}s` }} />)}
       </div>
-      <div className="music-info"><strong>funk do Otrec</strong><span role="status">{failed ? 'Toque para tentar' : playing ? 'tocando agora' : 'aperte o play'}</span></div>
+      <div className="music-info"><strong>funk do Otrec</strong><span role="status">{failed ? 'áudio indisponível' : autoplayBlocked ? 'toque para liberar o áudio' : audiblePlaying ? 'tocando agora' : 'iniciando...'}</span></div>
       <button type="button" className="music-toggle" onClick={toggle}
-        aria-label={playing ? 'Pausar música' : 'Reproduzir música'} title={playing ? 'Pausar música' : 'Reproduzir música'}>
+        aria-label={audiblePlaying ? 'Pausar música' : 'Reproduzir música'} title={audiblePlaying ? 'Pausar música' : 'Reproduzir música'}>
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          {playing ? <path d="M6 5h4v14H6zm8 0h4v14h-4z" /> : <path d="m8 4 13 8-13 8z" />}
+          {audiblePlaying ? <path d="M6 5h4v14H6zm8 0h4v14h-4z" /> : <path d="m8 4 13 8-13 8z" />}
         </svg>
       </button>
       <div className="music-volume" onBlur={event => {
@@ -76,7 +114,13 @@ export default function HeaderMusic() {
           aria-expanded={volumeOpen} aria-controls="music-volume-panel"
           onClick={() => {
             setVolumeOpen(open => !open);
-            if (autoStart.current) void audioRef.current.play().catch(() => {});
+            if (audioRef.current.paused && !userPaused.current) {
+              soundUnlockPending.current = false;
+              void audioRef.current.play().then(() => setAutoplayBlocked(false)).catch(() => {
+                soundUnlockPending.current = true;
+                setAutoplayBlocked(true);
+              });
+            }
           }}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M11 4 6 8H3v8h3l5 4z" />
