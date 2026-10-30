@@ -5,9 +5,10 @@ import { MARKETPLACES, MARKETPLACE_BY_ID } from '../lib/marketplaces';
 import MarketplacePicker, { Monogram } from './components/marketplace-picker';
 import PriceHistogram from './components/price-histogram';
 import PriceRange, { money, rangeLabel } from './components/price-range';
+import HeaderMusic from './components/header-music';
 import ProductCard, { discountOf } from './components/product-card';
 
-const STORAGE_KEY = 'procura-produto:form:v3';
+const STORAGE_KEY = 'otrec:form:v3';
 const emptySnapshot = { status: 'aguardando', paginasColetadas: 0, descartadosInternacionais: 0, descartadosPreco: 0, descartadosCategoria: 0, duplicados: 0, erros: [], eventos: [], produtos: [], fontes: [], duracao: 0 };
 const statusText = { aguardando: 'Pronto para garimpar', executando: 'Garimpando…', concluido: 'Coleta concluída', concluido_com_avisos: 'Concluída com avisos', cancelado: 'Coleta interrompida' };
 const sourceStatus = { 'na fila': 'na fila', coletando: 'lendo', concluido: 'ok', erro: 'erro' };
@@ -22,7 +23,7 @@ function download(text, type, extension) {
   const url = URL.createObjectURL(new Blob([text], { type }));
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `procura-produto-${new Date().toISOString().slice(0, 10)}.${extension}`;
+  anchor.download = `otrec-${new Date().toISOString().slice(0, 10)}.${extension}`;
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
@@ -35,7 +36,7 @@ function ThemeToggle() {
     const current = root.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     const next = current === 'dark' ? 'light' : 'dark';
     root.dataset.theme = next;
-    try { localStorage.setItem('procura-produto:theme', next); } catch { /* armazenamento indisponível */ }
+    try { localStorage.setItem('otrec:theme', next); } catch { /* armazenamento indisponível */ }
   };
   return <button type="button" className="icon-button" onClick={toggle} aria-label="Alternar tema claro/escuro"><svg className="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2" /><path d="M12 2v2.2M12 19.8V22M2 12h2.2M19.8 12H22M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M4.9 19.1l1.6-1.6M17.5 6.5l1.6-1.6" /></svg><svg className="moon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1Z" /></svg></button>;
 }
@@ -153,8 +154,8 @@ export default function ProductSearch() {
 
   return <>
     <header className="topbar">
-      <a className="brand" href="/"><span className="brand-mark" aria-hidden="true">⌕</span><span>procura<b>produto</b></span></a>
-      <div className="topbar-right"><span className="pill"><i className={`dot${active ? ' live' : ''}`} />{active ? 'coletando agora' : 'serverless · Vercel'}</span><ThemeToggle /></div>
+      <a className="brand" href="/"><span className="brand-mark" aria-hidden="true">⌕</span><span><b>otrec</b></span></a>
+      <div className="topbar-right"><HeaderMusic /><span className="pill"><i className={`dot${active ? ' live' : ''}`} />{active ? 'coletando agora' : 'serverless · Vercel'}</span><ThemeToggle /></div>
     </header>
 
     <main>
@@ -304,7 +305,7 @@ export default function ProductSearch() {
       </section>
 
       <footer>
-        <span><b>procura</b>produto</span>
+        <span><b>otrec</b></span>
         <span>A ausência de selo internacional não garante origem nacional. CAPTCHA, bloqueios e páginas que dependem de JavaScript podem impedir a coleta.</span>
       </footer>
     </main>

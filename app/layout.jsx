@@ -6,7 +6,7 @@ const body = Inter({ subsets: ['latin'], variable: '--font-body', display: 'swap
 const mono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono', display: 'swap' });
 
 export const metadata = {
-  title: 'Procura Produto · Garimpe preços em vários marketplaces',
+  title: 'otrec · Garimpe preços em vários marketplaces',
   description: 'Busque ao mesmo tempo na Amazon e no KaBuM!, com categoria, faixa de preço e sem compra internacional.',
 };
 
@@ -15,7 +15,7 @@ export const viewport = {
 };
 
 // Aplica o tema salvo antes da pintura para evitar o flash de tema errado.
-const themeScript = `try{var t=localStorage.getItem('procura-produto:theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}`;
+const themeScript = `try{var t=localStorage.getItem('otrec:theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}`;
 
 export default function RootLayout({ children }) {
   return (

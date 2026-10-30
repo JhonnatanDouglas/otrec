@@ -1,4 +1,4 @@
-# Procura Produto — Next.js/Vercel
+# otrec — Next.js/Vercel
 
 Aplicação React com Next.js que busca um produto ao mesmo tempo na **Amazon Brasil e no KaBuM!**, com categoria por marketplace e faixa de preço. A interface recebe resultados progressivamente por streaming e pode ser publicada no plano Hobby da Vercel.
 
@@ -19,6 +19,8 @@ npm run dev
 ```
 
 Abra `http://localhost:3000`.
+
+O header inclui a música **funk do Otrec**, em `public/audio/o-rs-certo.mp3`, com onda animada e botão de reproduzir/pausar. A reprodução em loop é solicitada ao abrir a página; quando o navegador bloqueia áudio automático, o player tenta iniciar na primeira interação ou pelo botão de play. Pausar impede novas tentativas automáticas durante a visita. A animação respeita a preferência de movimento reduzido.
 
 ## Verificação
 
