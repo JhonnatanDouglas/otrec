@@ -20,7 +20,7 @@ npm run dev
 
 Abra `http://localhost:3000`.
 
-O header inclui a música **funk do Otrec**, em `public/audio/o-rs-certo.mp3`, com onda animada e botão de reproduzir/pausar. A reprodução em loop é solicitada ao abrir a página; quando o navegador bloqueia áudio automático, o player tenta iniciar na primeira interação ou pelo botão de play. Pausar impede novas tentativas automáticas durante a visita. A animação respeita a preferência de movimento reduzido.
+O header inclui a música **funk do Otrec**, em `public/audio/o-rs-certo.mp3`, com onda animada, botão de reproduzir/pausar e botão de volume com ajuste de 0 a 100%. O volume inicial é 50%. A reprodução em loop é solicitada ao abrir a página; quando o navegador bloqueia áudio automático, o player tenta iniciar na primeira interação ou pelo botão de play. Pausar impede novas tentativas automáticas durante a visita. A animação respeita a preferência de movimento reduzido.
 
 ## Verificação
 
