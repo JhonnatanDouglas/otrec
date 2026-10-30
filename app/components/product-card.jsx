@@ -36,6 +36,7 @@ export default function ProductCard({ product, cheapest }) {
             : <span className="muted">sem avaliação</span>}
           {product.vendidos && <span className="muted">{product.vendidos}</span>}
           {product.internacional && <span className="tag tag-pink">internacional</span>}
+          {product.origemDesconhecida && <span className="tag tag-soft">origem não confirmada</span>}
         </div>
         {(product.vendedor || product.categoria) && <div className="card-seller">{[product.vendedor, product.categoria?.split('/').slice(0, 2).join(' › ')].filter(Boolean).join(' · ')}</div>}
         <div className="card-price">

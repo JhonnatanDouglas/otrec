@@ -7,7 +7,7 @@ const mono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono', displ
 
 export const metadata = {
   title: 'otrec · Garimpe preços em vários marketplaces',
-  description: 'Busque ao mesmo tempo na Amazon e no KaBuM!, com categoria, faixa de preço e sem compra internacional.',
+  description: 'Garimpe em oito marketplaces com coleta integrada ou buscas externas prontas, faixa de preço e filtro internacional.',
 };
 
 export const viewport = {

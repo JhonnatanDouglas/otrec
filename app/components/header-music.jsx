@@ -10,13 +10,13 @@ export default function HeaderMusic() {
   const autoStart = useRef(true);
   const [playing, setPlaying] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [volume, setVolume] = useState(50);
+  const [volume, setVolume] = useState(10);
   const [volumeOpen, setVolumeOpen] = useState(false);
 
   useEffect(() => {
     const audio = audioRef.current;
     autoStart.current = true;
-    audio.volume = 0.5;
+    audio.volume = 0.1;
     const attempt = () => { void audio.play().catch(() => {}); };
     const onInteraction = event => {
       if (!autoStart.current || playerRef.current?.contains(event.target)) return;

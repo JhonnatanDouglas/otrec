@@ -1,6 +1,9 @@
 __pycache__/
 tests/
 tests-js/
+tests-browser/
+test-results/
+playwright.config.mjs
 static/
 *.py
 message.txt
