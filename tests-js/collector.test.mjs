@@ -11,7 +11,7 @@ const aliItem = (id, price, origin = 'BR') => ({
   prices: { salePrice: { minPrice: price } }, evaluation: { starRating: 4.8 }, trade: { tradeDesc: '2K+ vendido(s)' },
   trace: { pdpParams: { pdp_cdi: encodeURIComponent(JSON.stringify({ shipFrom: origin })) }, utLogMap: { salePriceAmount: String(price * 100), originPriceAmount: String(price * 120) } },
 });
-const aliPage = (items, pagination = { hasNext: true, current: 1, total: 2 }) => `<html><script>/*init-data-start*/ window._dida_config_={}; window._dida_config_._init_data_= { data: ${JSON.stringify({ data: { root: { fields: { mods: { itemList: { content: items } } } } }, global: { screenPagination: pagination } })} }; /*init-data-end*/</script></html>`;
+const aliPage = (items, pagination = { hasNext: true, current: 1, total: 2 }, pageInfo) => `<html><script>/*init-data-start*/ window._dida_config_={}; window._dida_config_._init_data_= { data: ${JSON.stringify({ data: { root: { fields: { pageInfo, mods: items ? { itemList: { content: items } } : {} } } }, global: { screenPagination: pagination } })} }; /*init-data-end*/</script></html>`;
 const json = (data, url, init = {}) => new Response(data, { headers: { 'Content-Type': 'text/html; charset=utf-8', ...init.headers }, status: init.status ?? 200 });
 
 test('converte preços brasileiros', () => { assert.equal(parsePrice('R$ 1.234,56'), 1234.56); assert.equal(parsePrice(''), null); assert.equal(parsePrice('indisponível'), null); });
@@ -27,7 +27,9 @@ test('monta buscas por marketplace e categoria', () => {
   assert.equal(slugify('Fone Bluetooth Ação!'), 'fone-bluetooth-acao');
   assert.equal(buildSearchUrl('amazon', 'fone bluetooth', 'electronics'), 'https://www.amazon.com.br/s?k=fone+bluetooth&i=electronics');
   assert.equal(buildSearchUrl('kabum', 'SSD 1TB'), 'https://www.kabum.com.br/busca/ssd-1tb');
-  assert.match(buildSearchUrl('aliexpress', 'fone bluetooth', null, { excludeInternational: true }), /SearchText=fone\+bluetooth.*shipfrom.*4StarRating/);
+  assert.match(buildSearchUrl('aliexpress', 'fone bluetooth', null, { excludeInternational: true }), /SearchText=fone\+bluetooth.*shpf_co=BR.*shipfrom/);
+  assert.doesNotMatch(buildSearchUrl('aliexpress', 'fone bluetooth', null, { excludeInternational: true }), /4StarRating/);
+  assert.doesNotMatch(buildSearchUrl('aliexpress', 'fone bluetooth', null, { excludeInternational: false }), /shipfrom|shpf_co/);
   assert.throws(() => buildSearchUrl('amazon', 'fone', 'inexistente'));
   assert.throws(() => buildSearchUrl('amazon', '   '));
 });
@@ -36,21 +38,24 @@ test('monta links externos com termo e faixa de preço', () => {
   const options = { min: 150, max: 200, excludeInternational: true };
   const shopee = new URL(buildMarketplaceUrl('shopee', 'fone de ouvido', options));
   assert.equal(shopee.searchParams.get('keyword'), 'fone de ouvido');
-  assert.deepEqual(JSON.parse(shopee.searchParams.get('fe_filter_options')).map(filter => filter.group_name), ['FAST_DELIVERY', 'PRICE_RANGE']);
+  assert.deepEqual(JSON.parse(shopee.searchParams.get('fe_filter_options')), [{ group_name: 'LOCATIONS', values: ['Nacional'] }]);
+  assert.deepEqual([shopee.searchParams.get('minPrice'), shopee.searchParams.get('maxPrice')], ['150', '200']);
+  assert.equal(new URL(buildMarketplaceUrl('shopee', 'fone', { ...options, excludeInternational: false })).searchParams.has('fe_filter_options'), false);
   assert.match(buildMarketplaceUrl('mercadolivre', 'fone de ouvido', options), /fone-de-ouvido.*PriceRange_150BRL-200BRL.*SHIPPING\*ORIGIN/);
   const aliexpress = new URL(buildMarketplaceUrl('aliexpress', 'fone de ouvido', options));
   assert.equal(aliexpress.searchParams.get('SearchText'), 'fone de ouvido');
   assert.match(aliexpress.searchParams.get('selectedSwitches'), /shipfrom/);
-  assert.match(aliexpress.searchParams.get('selectedSwitches'), /4StarRating/);
+  assert.doesNotMatch(aliexpress.searchParams.get('selectedSwitches'), /4StarRating/);
+  assert.deepEqual([aliexpress.searchParams.get('minPrice'), aliexpress.searchParams.get('maxPrice')], ['150', '200']);
+  const americanasLink = new URL(buildMarketplaceUrl('americanas', 'fone de ouvido', options));
+  assert.equal(americanasLink.pathname, '/busca/fone-de-ouvido');
+  assert.equal(americanasLink.searchParams.get('price'), '150-to-200');
+  assert.equal(americanasLink.searchParams.has('q'), false);
   const magalu = new URL(buildMarketplaceUrl('magalu', 'fone de ouvido', options));
   assert.equal(magalu.searchParams.get('filters'), 'price---15000:20000');
   const casasBahia = new URL(buildMarketplaceUrl('casasbahia', 'fone de ouvido', options));
   assert.deepEqual(casasBahia.searchParams.getAll('filter'), ['preco-150to200']);
   assert.equal(casasBahia.searchParams.has('Parceiro'), false);
-  const americanas = new URL(buildMarketplaceUrl('americanas', 'fone de ouvido', options));
-  assert.equal(americanas.pathname, '/s');
-  assert.equal(americanas.searchParams.get('q'), 'fone de ouvido');
-  assert.equal(americanas.searchParams.get('price'), '150-to-200');
 });
 
 test('aplica faixa de preço na URL de cada marketplace', () => {
@@ -59,7 +64,7 @@ test('aplica faixa de preço na URL de cada marketplace', () => {
   assert.equal(withPriceFilter('https://www.kabum.com.br/busca/ssd', range), 'https://www.kabum.com.br/busca/ssd');
   const kabum = new URL(withPriceFilter('https://www.kabum.com.br/hardware/ssd?search-term=ssd', range));
   assert.deepEqual(JSON.parse(Buffer.from(kabum.searchParams.get('facet_filters'), 'base64').toString()), { price: { min: 170, max: 251 } });
-  assert.equal(withPriceFilter('https://pt.aliexpress.com/w/wholesale-ssd.html?SearchText=ssd', range), 'https://pt.aliexpress.com/w/wholesale-ssd.html?SearchText=ssd');
+  assert.equal(withPriceFilter('https://pt.aliexpress.com/w/wholesale-ssd.html?SearchText=ssd', range), 'https://pt.aliexpress.com/w/wholesale-ssd.html?SearchText=ssd&minPrice=170&maxPrice=201');
 });
 
 test('extrai cartões e paginação da Amazon', () => {
@@ -171,4 +176,16 @@ test('informa verificação humana exigida pelo marketplace', async t => {
   const result = await collectProducts(config);
   assert.equal(result.status, 'concluido_com_avisos');
   assert.match(result.fontes[0].erro, /verificação/);
+});
+
+test('AliExpress pagina pelo total real e aceita busca sem anúncios', () => {
+  const url = 'https://pt.aliexpress.com/w/wholesale-fone.html?SearchText=fone';
+  const single = { hasNext: false, current: 1, total: 1 };
+  const items = [aliItem(123, 180)];
+  // screenPagination diz "página única", mas pageInfo informa 150 anúncios.
+  assert.equal(extract(aliPage(items, single, { page: 1, pageSize: 60, totalResults: 150 }), url, 1).nextUrl, `${url}&page=2`);
+  assert.equal(extract(aliPage(items, single, { page: 3, pageSize: 60, totalResults: 150 }), `${url}&page=3`, 3).nextUrl, null);
+  const empty = extract(aliPage(null, single, { page: 1, pageSize: 60, totalResults: 0 }), url, 1);
+  assert.deepEqual([empty.products, empty.nextUrl, empty.empty], [[], null, true]);
+  assert.throws(() => extract(aliPage(null, single), url, 1), /lista de produtos reconhecível/);
 });

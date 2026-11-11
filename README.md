@@ -9,15 +9,17 @@ Aplicação React com Next.js que consulta oito marketplaces. Amazon Brasil, KaB
 | Amazon | HTML dos cards | 23 departamentos (`search-alias` do próprio site, parâmetro `i`) | `rh=p_36:` na URL |
 | KaBuM! | JSON `__NEXT_DATA__` | 15 departamentos, filtrados pelo departamento do produto | `facet_filters` (base64) na URL final, depois do redirecionamento da busca |
 | Mercado Livre | Link externo | Todas | Segmento `PriceRange` na URL |
-| Shopee | Link externo | Todas | `PRICE_RANGE` em `fe_filter_options` |
-| AliExpress | JSON estruturado embutido no HTML | Todas | Corte exato feito localmente; a URL solicita frete grátis, origem BR e nota 4+ |
+| Shopee | Link externo | Todas | `minPrice`/`maxPrice` na URL; `LOCATIONS: Nacional` em `fe_filter_options` |
+| AliExpress | JSON estruturado embutido no HTML | Todas | `minPrice`/`maxPrice` na URL e corte exato local; a URL solicita frete grátis e origem BR |
 | Magalu | Link externo | Todas | `filters=price---...` |
 | Casas Bahia | Link externo | Todas | `filter=preco-...` |
-| Americanas | JSON do HTML ou consulta pública GraphQL usada pela busca do site | Todas | Faceta `price` na consulta e corte exato local |
+| Americanas | JSON do HTML ou consulta pública GraphQL usada pela busca do site | Todas | Faceta `price` na consulta e corte exato local; o link externo usa `/busca/<termo>` |
 
 Mercado Livre, Shopee, Magalu e Casas Bahia podem ser selecionados, mas seus produtos ainda não são agregados na lista interna. Selecioná-los prepara links de busca externa. O AliExpress expõe no HTML um JSON estruturado com preço, nota, vendidos e origem de envio. A Americanas usa uma consulta pública GraphQL; o identificador atual da consulta é lido do JavaScript público da loja, sem executar código remoto e sem fixar um hash que ficaria desatualizado. O catálogo e os geradores de URL ficam em `lib/marketplaces.js`.
 
 Todos os marketplaces da busca concluída aparecem no filtro por loja, mesmo com zero produtos. Ao selecionar uma loja, a interface explica se houve bloqueio, exclusão por faixa de preço, exclusão internacional, origem não confirmada ou se a loja só está disponível por link externo. Isso não implica que exista coleta integrada nos oito sites.
+
+O filtro “4 estrelas ou mais” do AliExpress não é enviado: no site ele anula a origem Brasil e, junto com a faixa de preço, devolve uma busca vazia. Use a ordenação por avaliação depois da coleta. Na Americanas, `/s?q=` redireciona para `/busca/<termo>` e descarta o preço, por isso o link externo já abre em `/busca/<termo>`; termos que o site reescreve para outra página (por exemplo “fone bluetooth” → “fone de ouvido bluetooth”) ainda perdem a faixa de preço no link externo, mas não na coleta integrada.
 
 Com **Excluir compra internacional** marcado, o AliExpress exclui também anúncios sem origem confirmada. O parâmetro de envio do Brasil não garante que a loja respeite o filtro: o corte final usa a origem informada em cada produto. Para incluir produtos internacionais, desmarque a opção e execute a busca novamente.
 

@@ -321,7 +321,8 @@ main { max-width: 1320px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 48px) 40px
 .card { display: flex; flex-direction: column; min-width: 0; border: 2px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: 4px 4px 0 var(--shadow); overflow: hidden; transition: transform .15s, box-shadow .15s; animation: pop .35s ease-out both; }
 .card:hover { transform: translate(-3px, -3px) rotate(-.4deg); box-shadow: 8px 8px 0 var(--shadow); }
 .card-media { position: relative; aspect-ratio: 4 / 3; background: #fff; border-bottom: 2px solid var(--line); display: grid; place-items: center; }
-.card-media img { width: 100%; height: 100%; object-fit: contain; padding: 18px; }
+.card-media { overflow: hidden; }
+.card-media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; padding: 18px; }
 .card-market { position: absolute; left: 10px; top: 10px; display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 3px; border: 2px solid #121212; border-radius: 999px; background: var(--brand); color: var(--brand-ink); font-size: 11px; font-weight: 800; transform: rotate(-3deg); }
 .card-market .monogram { border-color: #121212; }
 .card-discount { position: absolute; right: 10px; top: 10px; padding: 4px 9px; border: 2px solid #121212; border-radius: 8px; background: var(--lime); color: #121212; font: 800 13px var(--font-mono), monospace; transform: rotate(4deg); }

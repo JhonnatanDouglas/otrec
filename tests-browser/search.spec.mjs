@@ -158,7 +158,8 @@ test('alterar o produto atualiza links e URLs extras sem manter o termo antigo',
       expect(new URL(link).searchParams.get('keyword')).toBe(term);
     }
     const americanas = links.find(raw => new URL(raw).hostname === 'www.americanas.com.br');
-    expect(new URL(americanas).searchParams.get('q')).toBe(term);
+    expect(new URL(americanas).pathname).toBe(`/busca/${term.replaceAll(' ', '-')}`);
+    expect(new URL(americanas).searchParams.get('price')).toBe('170-to-200');
   }
 });
 
