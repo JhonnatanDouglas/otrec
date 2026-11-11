@@ -25,7 +25,11 @@ function assertTerm(link, term) {
       assert.equal(url.searchParams.get('SearchText'), term);
       assert.equal(url.pathname, `/w/wholesale-${slug}.html`);
       break;
-    case 'americanas': assert.equal(url.searchParams.get('q'), term); assert.equal(url.pathname, '/s'); break;
+    case 'americanas':
+      // Link gerado: /busca/<termo> (mantém o preço). Modelo colado: /s?q=<termo>.
+      if (url.pathname === '/s') assert.equal(url.searchParams.get('q'), term);
+      else assert.equal(url.pathname, `/busca/${slug}`);
+      break;
     case 'kabum': assert.equal(url.pathname, `/busca/${slug}`); break;
     case 'mercadolivre': assert.equal(url.pathname.split('_')[0], `/${slug}`); break;
     case 'magalu': assert.equal(decodeURIComponent(url.pathname.split('/')[2].replaceAll('+', ' ')), term); break;

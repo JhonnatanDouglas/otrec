@@ -34,7 +34,7 @@ export default function ProductCard({ product, cheapest }) {
           {product.avaliacao !== null && product.avaliacao !== undefined
             ? <span className="stars">★ {product.avaliacao.toLocaleString('pt-BR')}{product.quantidadeAvaliacoes ? <em> ({product.quantidadeAvaliacoes.toLocaleString('pt-BR')})</em> : null}</span>
             : <span className="muted">sem avaliação</span>}
-          {product.vendidos && <span className="muted">{product.vendidos}</span>}
+          {product.vendidos > 0 && <span className="muted">{product.vendidos.toLocaleString('pt-BR')} vendido{product.vendidos === 1 ? '' : 's'}</span>}
           {product.internacional && <span className="tag tag-pink">internacional</span>}
           {product.origemDesconhecida && <span className="tag tag-soft">origem não confirmada</span>}
         </div>
